@@ -175,7 +175,7 @@ WavesetsEvent : AbstractWavesetsEvent {
 					averagePlaybackRate = ~rate;
 					~instrument = ~instrument ? \wvst0;
 				};
-				~rate2 = ~rate2 ? 1.0;
+				~rate2 = ~rate2 ? ~rate;
 				~sustain = ~sustain ?? {
 					abs(~numFrames * (~repeats ? 1).floor.max(1) / (~sampleRate * averagePlaybackRate.abs))
 				};  // todo: if sustain is given, find next crossings
