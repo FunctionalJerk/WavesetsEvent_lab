@@ -169,17 +169,15 @@ WavesetsEvent : AbstractWavesetsEvent {
 			} {
 				~rate = ~rate ? 1.0;
 				if(~rate2.notNil) {
+					if(~fixsustain.notNil) { ~rate2 = ~rate2 * ~rate };
 					averagePlaybackRate = ~rate + ~rate2 * 0.5;
 					~instrument = ~instrument ? \wvst1gl;
 				} {
 					averagePlaybackRate = ~rate;
 					~instrument = ~instrument ? \wvst0;
 				};
-				if(~fixsustain.notNil && ~rate2.notNil) {
-					~rate2 = ~rate2 * ~rate
-				} {
-					~rate2 = ~rate2 ? ~rate
-				};
+
+				~rate2 = ~rate2 ? ~rate;
 
 				~sustain = ~sustain ?? {
 					abs(~numFrames * (~repeats ? 1).floor.max(1) / (~sampleRate * averagePlaybackRate.abs))
