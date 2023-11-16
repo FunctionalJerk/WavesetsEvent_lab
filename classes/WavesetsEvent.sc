@@ -154,7 +154,8 @@ WavesetsEvent : AbstractWavesetsEvent {
 		~endFrame = theseXings.clipAt(endWs);
 		~numFrames = ~endFrame - ~startFrame;
 		if(~fixsustain.notNil) {
-			~rate = ~numFrames / (~fixsustain * ~sampleRate)
+			~rate = ~numFrames / (~fixsustain * ~sampleRate);
+			if(~rate2.notNil) { ~rate2 = ~rate2 * ~rate };
 		};
 		if(~wsamp.notNil) { ~amp =  ~wsamp / wavesets.maximumAmp(~start, ~num) };
 	}
@@ -169,7 +170,6 @@ WavesetsEvent : AbstractWavesetsEvent {
 			} {
 				~rate = ~rate ? 1.0;
 				if(~rate2.notNil) {
-					if(~fixsustain.notNil) { ~rate2 = ~rate2 * ~rate };
 					averagePlaybackRate = ~rate + ~rate2 * 0.5;
 					~instrument = ~instrument ? \wvst1gl;
 				} {
