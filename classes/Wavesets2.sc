@@ -2,25 +2,62 @@
 
 Wavesets2 {
 
-	var <signal, <buffer;
+	var <signal, <buffer, <floatArray;
 
 	var	<xings, <lengths, <fracXings, <fracLengths;
 	var <amps, <maxima, <minima;
 	var <minSet, <maxSet, <avgLength, <sqrAvgLength;
 	var <minAmp, <maxAmp, <avgAmp, <sqrAvgAmp;
 
-	classvar <>defaultMinLength = 10; // minLength reasonable? => 4.4 kHz maxFreq.
+	classvar <>defaultMinLength = 10; // minLength reasonable? => 4.4 kHz maxfq.
 
-	*fromBuffer { |buffer, onComplete, minLength|
-		^this.new.fromBuffer(buffer, onComplete, minLength)
+	/*
+	*fromBuffer { |buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame|
+	^this.new.fromBuffer(buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame)
+	}*/
+
+	*fromBuffer { |buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame|
+		^this.new.fromBuffer(buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame)
 	}
 
-	fromBuffer { |argBuffer, onComplete, minLength|
+	// fromBuffer { |argBuffer, tmpBuffer, onComplete, minLength, startFrame, endFrame|
+	fromBuffer { |argBuffer, onComplete, minLength, startFrame, endFrame|
 		buffer = argBuffer;
-		buffer.loadToFloatArray(0, -1, { |array|
-			this.setSignal(array, minLength, buffer);
-			onComplete.value(this);
+		// buffer.loadToFloatArray(0, -1, { |array|
+		startFrame = (startFrame ? 0).wrap(0,argBuffer.numFrames);
+		endFrame = (endFrame ? argBuffer.numFrames-1).wrap(0,argBuffer.numFrames);
+		// endFrame = endFrame.wrap(0,argBuffer.numFrames);
+
+		/*		if(endFrame < startFrame) {
+		buffer = tmpBuffer;
+		argBuffer.copyData(buffer, dstStartAt: 0, srcStartAt: startFrame, numSamples: argBuffer.numFrames - startFrame);
+		argBuffer.copyData(buffer, dstStartAt: argBuffer.numFrames - startFrame, numSamples: endFrame);
+		endFrame = argBuffer.numFrames - startFrame + endFrame;
+		startFrame = 0;
+
+		} { buffer = argBuffer };
+
+		if((endFrame - startFrame) >= minLength){
+		buffer.loadToFloatArray(startFrame, endFrame - startFrame, { |array|
+		this.setSignal(array, minLength, buffer,startFrame,endFrame);
+		onComplete.value(this);
 		})
+		} { "!(endFrame - startFrame) >= minLength".inform };*/
+
+		if(startFrame > endFrame){
+			buffer.loadToFloatArray(startFrame, buffer.numFrames - startFrame, { |array|
+				buffer.loadToFloatArray(0, endFrame, { |urray|
+					array = array ++ urray;
+					this.setSignal(array, minLength, buffer, startFrame, endFrame);
+					onComplete.value(this);
+				})
+			});
+		} {
+			buffer.loadToFloatArray(startFrame, endFrame - startFrame, { |array|
+				this.setSignal(array, minLength, buffer, startFrame, endFrame);
+				onComplete.value(this);
+			});
+		}
 	}
 
 	toBuffer { |buffer, onComplete|
@@ -36,10 +73,11 @@ Wavesets2 {
 		this.analyse;
 	}
 
-	setSignal { |sig, minLength, argBuffer|
+	setSignal { |sig, minLength, argBuffer, startFrame, endFrame|
 		signal = sig;
 		buffer = argBuffer;
-		this.analyse(minLength);
+		this.analyse(minLength,startFrame,endFrame);
+		// this.analyse(minLength);
 	}
 
 	numFrames { ^signal.size }
@@ -84,7 +122,7 @@ Wavesets2 {
 
 	// the interesting bit
 
-	analyse { |minLength|
+	analyse { |minLength,startFrame,endFrame|
 		//	var chunkSize = 400, pause = 0.01;	// not used yet
 		xings = Array.new;
 		amps = Array.new;
@@ -93,8 +131,8 @@ Wavesets2 {
 		maxima = Array.new; 	// indices of possible turnaround points
 		minima = Array.new; 	//
 		"%: Analysing ...".format(this.class).inform;
-
-		this.analyseFromTo(minLength: minLength);
+		"From: % to: %".format(startFrame,endFrame).inform;
+		this.analyseFromTo(startFrame: startFrame, endFrame: endFrame, minLength: minLength);
 		this.calcAverages;
 		"\t ... done. (% xings)".format(xings.size).inform;
 	}
@@ -109,13 +147,14 @@ Wavesets2 {
 
 		// find xings, store indices, lengths, and amps.
 
-		startFrame = max(0, startFrame);
-		endFrame = (endFrame ? signal.size - 1).min(signal.size - 1);
+		startFrame = max(0, startFrame).asInteger;
+		endFrame = (endFrame ? signal.size - 1).min(signal.size - 1).asInteger;
 
-		(startFrame to: endFrame).do { |i|
+		// (startFrame to: endFrame).do { |i|
+		signal.size.do { |x,i|
+
 			var thisSample;
 			thisSample = signal.at(i);
-
 			// if Xing from non-positive to positive:
 			if(
 				(prevSample <= 0.0) and:
@@ -133,11 +172,11 @@ Wavesets2 {
 					minima = minima.add(minAmpIndex);
 				};
 
-				xings = xings.add(i);
+				xings = xings.add(i + startFrame);
 
 				// lin interpol for fractional crossings
 				frac = prevSample / (prevSample - thisSample);
-				fracXings = fracXings.add(i - 1 + frac);
+				fracXings = fracXings.add(i - 1 + frac + startFrame);
 
 				// reset vars for next waveset
 				maxSamp = 0.0;
@@ -146,10 +185,11 @@ Wavesets2 {
 			};
 
 			lengthCount = lengthCount + 1;
-			if(thisSample > maxSamp) { maxSamp = thisSample; maxAmpIndex = i };
-			if(thisSample < minSamp) { minSamp = thisSample; minAmpIndex = i };
+			if(thisSample > maxSamp) { maxSamp = thisSample; maxAmpIndex = i + startFrame };
+			if(thisSample < minSamp) { minSamp = thisSample; minAmpIndex = i + startFrame };
 			prevSample = thisSample;
 		}
+
 	}
 
 	// basic statistics
