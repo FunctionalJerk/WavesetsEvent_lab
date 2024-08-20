@@ -2,7 +2,7 @@
 
 Wavesets2 {
 
-	var <signal, <buffer, <floatArray;
+	var <signal, <buffer;
 
 	var	<xings, <lengths, <fracXings, <fracLengths;
 	var <amps, <maxima, <minima;
@@ -10,39 +10,16 @@ Wavesets2 {
 	var <minAmp, <maxAmp, <avgAmp, <sqrAvgAmp;
 
 	classvar <>defaultMinLength = 10; // minLength reasonable? => 4.4 kHz maxfq.
+	classvar <>printStats = true; // minLength reasonable? => 4.4 kHz maxfq.
 
-	/*
-	*fromBuffer { |buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame|
-	^this.new.fromBuffer(buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame)
-	}*/
-
-	*fromBuffer { |buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame|
-		^this.new.fromBuffer(buffer, tmpBuffer, onComplete, minLength,startFrame,endFrame)
+	*fromBuffer { |buffer, tmpBuffer, onComplete, minLength, startFrame, endFrame|
+		^this.new.fromBuffer(buffer, tmpBuffer, onComplete, minLength, startFrame, endFrame)
 	}
 
-	// fromBuffer { |argBuffer, tmpBuffer, onComplete, minLength, startFrame, endFrame|
 	fromBuffer { |argBuffer, onComplete, minLength, startFrame, endFrame|
 		buffer = argBuffer;
-		// buffer.loadToFloatArray(0, -1, { |array|
 		startFrame = (startFrame ? 0).wrap(0,argBuffer.numFrames);
 		endFrame = (endFrame ? argBuffer.numFrames-1).wrap(0,argBuffer.numFrames);
-		// endFrame = endFrame.wrap(0,argBuffer.numFrames);
-
-		/*		if(endFrame < startFrame) {
-		buffer = tmpBuffer;
-		argBuffer.copyData(buffer, dstStartAt: 0, srcStartAt: startFrame, numSamples: argBuffer.numFrames - startFrame);
-		argBuffer.copyData(buffer, dstStartAt: argBuffer.numFrames - startFrame, numSamples: endFrame);
-		endFrame = argBuffer.numFrames - startFrame + endFrame;
-		startFrame = 0;
-
-		} { buffer = argBuffer };
-
-		if((endFrame - startFrame) >= minLength){
-		buffer.loadToFloatArray(startFrame, endFrame - startFrame, { |array|
-		this.setSignal(array, minLength, buffer,startFrame,endFrame);
-		onComplete.value(this);
-		})
-		} { "!(endFrame - startFrame) >= minLength".inform };*/
 
 		if(startFrame > endFrame){
 			buffer.loadToFloatArray(startFrame, buffer.numFrames - startFrame, { |array|
@@ -77,7 +54,6 @@ Wavesets2 {
 		signal = sig;
 		buffer = argBuffer;
 		this.analyse(minLength,startFrame,endFrame);
-		// this.analyse(minLength);
 	}
 
 	numFrames { ^signal.size }
@@ -130,11 +106,15 @@ Wavesets2 {
 		fracXings = Array.new;
 		maxima = Array.new; 	// indices of possible turnaround points
 		minima = Array.new; 	//
-		"%: Analysing ...".format(this.class).inform;
-		"From: % to: %".format(startFrame,endFrame).inform;
+		if(printStats) {
+			"%: Analysing ...".format(this.class).inform;
+			"From: % to: %".format(*[startFrame,endFrame].asInteger).inform;
+		};
 		this.analyseFromTo(startFrame: startFrame, endFrame: endFrame, minLength: minLength);
 		this.calcAverages;
-		"\t ... done. (% xings)".format(xings.size).inform;
+		if(printStats) {
+			"\t ... done. (% xings)".format(xings.size).inform;
+		}
 	}
 
 	analyseFromTo { |startFrame = 0, endFrame, minLength|
