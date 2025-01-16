@@ -12,8 +12,8 @@ Wavesets2 {
 	classvar <>defaultMinLength = 10; // minLength reasonable? => 4.4 kHz maxfq.
 	classvar <>printStats = true; // minLength reasonable? => 4.4 kHz maxfq.
 
-	*fromBuffer { |buffer, tmpBuffer, onComplete, minLength, startFrame, endFrame|
-		^this.new.fromBuffer(buffer, tmpBuffer, onComplete, minLength, startFrame, endFrame)
+	*fromBuffer { |buffer, onComplete, minLength, startFrame, endFrame|
+		^this.new.fromBuffer(buffer, onComplete, minLength, startFrame, endFrame)
 	}
 
 	fromBuffer { |argBuffer, onComplete, minLength, startFrame, endFrame|
@@ -23,8 +23,8 @@ Wavesets2 {
 
 		if(startFrame > endFrame){
 			buffer.loadToFloatArray(startFrame, buffer.numFrames - startFrame, { |array|
-				buffer.loadToFloatArray(0, endFrame, { |urray|
-					array = array ++ urray;
+				buffer.loadToFloatArray(0, endFrame, { |brray|
+					array = array ++ brray;
 					this.setSignal(array, minLength, buffer, startFrame, endFrame);
 					onComplete.value(this);
 				})
@@ -94,11 +94,9 @@ Wavesets2 {
 		)
 	}
 
-
-
 	// the interesting bit
 
-	analyse { |minLength,startFrame,endFrame|
+	analyse { |minLength, startFrame, endFrame|
 		//	var chunkSize = 400, pause = 0.01;	// not used yet
 		xings = Array.new;
 		amps = Array.new;
@@ -106,9 +104,10 @@ Wavesets2 {
 		fracXings = Array.new;
 		maxima = Array.new; 	// indices of possible turnaround points
 		minima = Array.new; 	//
+
 		if(printStats) {
 			"%: Analysing ...".format(this.class).inform;
-			"From: % to: %".format(*[startFrame,endFrame].asInteger).inform;
+			"StartFrame: % EndFrame: %".format(*[startFrame,endFrame].asInteger).inform;
 		};
 		this.analyseFromTo(startFrame: startFrame, endFrame: endFrame, minLength: minLength);
 		this.calcAverages;
@@ -130,7 +129,6 @@ Wavesets2 {
 		startFrame = max(0, startFrame).asInteger;
 		endFrame = (endFrame ? signal.size - 1).min(signal.size - 1).asInteger;
 
-		// (startFrame to: endFrame).do { |i|
 		signal.size.do { |x,i|
 
 			var thisSample;

@@ -65,7 +65,6 @@ AbstractWavesetsEvent {
 		^this.asEvent(event);
 	}
 
-
 	// backwards compatibility
 	eventFor { |startWs=0, numWs=5, repeats=3, rate=1, useFrac = true|
 		^this.asEvent((start: startWs, num: numWs, repeats: repeats, rate: rate, useFrac: useFrac))
@@ -96,22 +95,20 @@ WavesetsEvent : AbstractWavesetsEvent {
 	}
 
 	readChannel { |path, channel = 0, startFrame = 0, numFrames = -1, onComplete, server, minLength|
-		var finish, buffer;
+		var finish, buffer, endFrame;
+		endFrame = if(numFrames > 0) {
+			startFrame + numFrames;
+		} { nil };
+
 		server = server ? Server.default;
 		if(server.serverRunning.not) {
 			"Reading WavesetsBuffer failed. Server % not running".format(server).warn;
 			^this
 		};
-		finish = { this.setBuffer(buffer, onComplete, minLength) };
+		finish = { this.setBuffer(buffer, onComplete, minLength, startFrame, endFrame) };
 		buffer = Buffer.readChannel(server ? Server.default, path, startFrame, numFrames, channels: channel.asArray, action: finish);
 	}
 
-	/*
-	setBuffer { |argBuffer, tmpBuffer, onComplete, minLength,startFrame,endFrame|
-	wavesets = Wavesets2.fromBuffer(argBuffer, tmpBuffer, onComplete, minLength, startFrame, endFrame);
-	buffer = argBuffer;
-	}
-	*/
 	setBuffer { |argBuffer, onComplete, minLength, startFrame, endFrame|
 		wavesets = Wavesets2.fromBuffer(argBuffer, onComplete, minLength, startFrame, endFrame);
 		buffer = argBuffer;
@@ -153,13 +150,8 @@ WavesetsEvent : AbstractWavesetsEvent {
 		~endTime !? { ~end = wavesets.nextCrossingIndex(~endTime * ~sampleRate, useFrac) };
 
 		if(~wsustain.notNil) {
-
-			// why ~sustain.value? Mistake or does this mean we only want ~wsustain together with ~sustain?
-			// doesn't this conflict with rate != 1 ?
-			// when sustain is rounded to the next crossing, we dont need ~wsustain?
-			endWs = wavesets.nextCrossingIndex(~startFrame + (~sustain.value * ~sampleRate), useFrac);
+			endWs = wavesets.nextCrossingIndex(~startFrame + (~wsustain.value * ~sampleRate), useFrac);
 		} {
-			// in every case, not only if ~wssustain.notNil
 			~num = if(~end.notNil) { max(~end - startWs, 1) } { ~num ? 1 };
 			endWs = startWs + ~num;
 		};
@@ -169,7 +161,8 @@ WavesetsEvent : AbstractWavesetsEvent {
 
 		if(~fixsustain.notNil) {
 			~rate = ~numFrames / (~fixsustain * ~sampleRate);
-			if(~rate2.notNil) { ~rate2 = ~rate2 * ~rate } { ~rate2 = ~rate };
+			~rate2 = ~rate;
+			// if(~rate2.notNil) { ~rate2 = ~rate2 * ~rate } { ~rate2 = ~rate };
 		};
 		if(~wsamp.notNil) { ~amp =  ~wsamp / wavesets.maximumAmp(~start, ~num) };
 	}
@@ -185,10 +178,11 @@ WavesetsEvent : AbstractWavesetsEvent {
 				~rate = ~rate ? 1.0;
 				if(~rate2.notNil) {
 					averagePlaybackRate = ~rate + ~rate2 * 0.5;
-					if(~envBuf.notNil) {
-						~instrument = ~instrument ? \wvst2glenv;
-					} {
+
+					if(~envBuf.isNil) {
 						~instrument = ~instrument ? \wvst1gl;
+					} {
+						~instrument = ~instrument ? \wvst2glenv;
 					}
 				} {
 					averagePlaybackRate = ~rate;
@@ -196,13 +190,6 @@ WavesetsEvent : AbstractWavesetsEvent {
 					~rate2 = ~rate;
 				};
 
-				/*
-				if(~sustain.notNil) {
-				~sustain = abs(~numFrames / (~sampleRate * averagePlaybackRate.abs));
-				} {
-				~sustain = abs(~numFrames * (~repeats ? 1).floor.max(1) / (~sampleRate * averagePlaybackRate.abs))
-				};
-				*/
 				~sustain = ~sustain ?? {
 					abs(~numFrames * (~repeats ? 1).floor.max(1) / (~sampleRate * averagePlaybackRate.abs))
 				};
@@ -260,6 +247,34 @@ WavesetsEvent : AbstractWavesetsEvent {
 		};
 	}
 
+	getDFT { |index, num, method, action|
+
+		var real, imag, cosTable, complex;
+		var start, numFrames, size, func;
+		#start, numFrames = this.wavesets.frameFor(index, num, false);
+		size = numFrames;
+
+		method = method ? 'czt';
+
+		func = { |arr|
+
+			if(arr.size != size) { arr = arr.resamp1(size) };
+			real = arr.as(Signal);
+			imag = Signal.newClear(size);
+			cosTable = Signal.fftCosTable(size);
+
+			complex = dft(real, imag, method);
+
+			action.value(complex, real, imag);
+		};
+
+		if(buffer.server.isLocal) {
+			this.buffer.loadToFloatArray(start, numFrames, func)
+		} {
+			this.buffer.getToFloatArray(start, numFrames, 0.01, 3, func)
+		};
+	}
+
 
 	*prepareSynthDefs {
 
@@ -283,7 +298,19 @@ WavesetsEvent : AbstractWavesetsEvent {
 			OffsetOut.ar(out, Pan2.ar(snd, pan));
 		}, \ir.dup(10)).add;
 
-		SynthDef(\wvst2glenv, { | out = 0, pan = -1, buf = 0, startFrame = 0, numFrames = 441, rate = 1, rate2 = 1, sustain = 1, amp = 0.1, interpolation = 2, envBuf = 1|
+		//
+		SynthDef(\wvst2, { | out = 0, buf = 0, startFrame = 0, numFrames = 441, rate = 1, rate2 = 1, sustain = 1, amp = 0.1, interpolation = 2, envBuf = 1, pos = 0|
+			var rateEnv = Line.ar(rate, rate2, sustain) * sign(numFrames);
+			//var phasor = Phasor.ar(0, BufRateScale.ir(buf) * rateEnv, 0, abs(numFrames)) + startFrame;
+			var sweep = Sweep.ar(0, BufRateScale.ir(buf) * rateEnv * sign(numFrames) * SampleRate.ir);
+			var phasor = sweep.wrap(0, abs(numFrames)) + startFrame;
+			var env = EnvGen.ar(Env([1, 1, 0], [sustain, 0]), doneAction: 2);
+			var snd = BufRd.ar(1, buf, phasor, 1, interpolation) * env * amp;
+
+			OffsetOut.ar(out, snd);
+		}, \ir.dup(11)).add;
+
+		SynthDef(\wvst2glenv, { | out = 0, pan = 0, buf = 0, startFrame = 0, numFrames = 441, rate = 1, rate2 = 1, sustain = 1, amp = 0.1, interpolation = 2, envBuf = 1|
 			var rateEnv = Line.ar(rate, rate2, sustain) * sign(numFrames);
 			// var phasor = Phasor.ar(0, BufRateScale.ir(buf) * rateEnv, 0, abs(numFrames)) + startFrame;
 			var sweep = Sweep.ar(0, BufRateScale.ir(buf) * rateEnv * sign(numFrames) * SampleRate.ir);
@@ -293,16 +320,6 @@ WavesetsEvent : AbstractWavesetsEvent {
 			OffsetOut.ar(out, Pan2.ar(snd,pan));
 		}, \ir.dup(11)).add;
 
-		SynthDef(\ownWs, { | out = 0, buf = 0, startFrame = 0, numFrames = 441, rate = 1, rate2 = 1, sustain = 1, amp = 0.1, interpolation = 2, envBuf = 1, pos = 0|
-			var rateEnv = XLine.ar(rate, rate2, sustain) * sign(numFrames);
-			//var phasor = Phasor.ar(0, BufRateScale.ir(buf) * rateEnv, 0, abs(numFrames)) + startFrame;
-			var sweep = Sweep.ar(0, BufRateScale.ir(buf) * rateEnv * sign(numFrames) * SampleRate.ir);
-			var phasor = sweep.wrap(0, abs(numFrames)) + startFrame;
-			var env = EnvGen.ar(Env([1, 1, 0], [sustain, 0]), doneAction: 2);
-			var snd = BufRd.ar(1, buf, phasor, 1, interpolation) * env * amp;
-
-			OffsetOut.ar(out, snd);
-		}, \ir).add;
 
 	}
 

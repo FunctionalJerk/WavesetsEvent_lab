@@ -77,6 +77,8 @@ METHOD:: setBuffer
 argument:: argBuffer
 argument:: onComplete
 argument:: minLength
+argument:: startFrame
+argument:: endFrame
 
 METHOD:: read
 argument:: path
@@ -99,5 +101,11 @@ METHOD:: getFFT
 argument:: index
 argument:: num
 argument:: size
+argument:: action
+
+METHOD:: getDFT
+argument:: index
+argument:: num
+argument:: method
 argument:: action
 
